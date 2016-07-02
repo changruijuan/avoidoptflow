@@ -15,4 +15,6 @@ void learningFeature(CvPoint2D32f* cornersprev, CvPoint2D32f* cornerscurr, IplIm
 
 void learningCvMat(IplImage* imgprev, IplImage* imgdst, CvMat* velx, CvMat* vely);
 
+void learningCvMat_move(IplImage* imgprev, IplImage* imgdst, CvMat* velx, CvMat* vely);
+
 #endif

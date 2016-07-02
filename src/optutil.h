@@ -76,4 +76,7 @@ float compareTags(int* tags, int length);
 
 float getMaxConnectedSpace(IplImage* imgdst, int *tagSafe);
 
+//0 - stable, 1 - increase, 2 - decrease, 3 - mess
+int getArrayState(int* array, int currindex);
+
 #endif /* util_FOE_TTC_ */

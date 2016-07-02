@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "optutil.h"
 #include "optdrawflow.h"
+#include "var.h"
 #include "cv.h"
 #include "cxcore.h"
 #include "highgui.h"
@@ -211,7 +212,7 @@ float compareTag(int *tagOrigin, int *tagSafe, int *tags){
 		}
 	}
 	char buffer[50];
-	sprintf(buffer, "%d\t%d\t%d\t%d \n", tag_1, tag_2, tag_3, tag_4);
+    sprintf(buffer, "%d %d  %d  %d \n", tag_1, tag_2, tag_3, tag_4);
 	writeFile(buffer);
 	return tag_1*TAG_1_K + tag_2*TAG_2_K + tag_3*TAG_3_K + tag_4*TAG_4_K;//各比例项暂定1 -1.5 -2 1；
 }
@@ -258,7 +259,7 @@ float balanceControlLR(int isBigLeft, int isBigRight, int leftSumFlow, int right
     }
 
     if (isBigLeft == 2 && isBigRight == 2) {
-        return 0; // sky
+        return 5; // sky
     }
 
     if(leftSumFlow == 0 || rightSumFlow == 0){
@@ -335,43 +336,63 @@ void drawOrientation(Vec2i leftSumFlow, Vec2i rightSumFlow, int px, int py, floa
 	cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX|CV_FONT_ITALIC, 1, 1, 0, 2);
 
 	int resulttxt = 0;
+    char c[100];
     if (result == 2*INT_FLOAT)
 	{
         resulttxt = 2;
-        cvPutText(imgdst, "RS", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  RS", img_curr_num);
     }else if (result == -2*INT_FLOAT)
     {
         resulttxt = -2;
+        sprintf(c, "%d  LS", img_curr_num);
         cvPutText(imgdst, "LS", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
     }else if (result == 4*INT_FLOAT)
     {
         resulttxt = 4;
-        cvPutText(imgdst, "RRS", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  RRS", img_curr_num);
     }else if (result == -4*INT_FLOAT)
     {
         resulttxt = -4;
-        cvPutText(imgdst, "LLS", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  LLS", img_curr_num);
     }else if (result == 8*INT_FLOAT)
     {
         resulttxt = 8;
-        cvPutText(imgdst, "R*", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  R*", img_curr_num);
     }else if (result == -8*INT_FLOAT)
     {
         resulttxt = -8;
-        cvPutText(imgdst, "L*", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  L*", img_curr_num);
+    }else if (result == 16*INT_FLOAT)
+    {
+        resulttxt = 16;
+        sprintf(c, "%d  MR", img_curr_num);
+    }else if (result == -16*INT_FLOAT)
+    {
+        resulttxt = -16;
+        sprintf(c, "%d  ML", img_curr_num);
+    }else if (result == 32*INT_FLOAT)
+    {
+        resulttxt = 32;
+        sprintf(c, "%d  MH", img_curr_num);
+    }else if (result == -32*INT_FLOAT)
+    {
+        resulttxt = -32;
+        sprintf(c, "%d  MH", img_curr_num);
     }else if (result  == 0)
 	{
 		resulttxt = 0;
-		cvPutText(imgdst, "F", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  F", img_curr_num);
 	}else if (result < 0)
 	{
 		resulttxt = -1;
-		cvPutText(imgdst, "L", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  L", img_curr_num);
 	}else if (result > 0)
 	{
 		resulttxt = 1;
-		cvPutText(imgdst, "R", cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
+        sprintf(c, "%d  R", img_curr_num);
 	}
+
+    cvPutText(imgdst, c, cvPoint(20, 20), &font, CV_RGB(255, 0, 0));
 
 	//char c[50];
 	//sprintf(c, "%f", result/100.0);
@@ -718,4 +739,29 @@ float compareTags(int* tags, int length){
 		}
 	}
 	return right*1.0/count;
+}
+
+//0 - stable, 1 - increase, 2 - decrease, 3 - mess
+int getArrayState (int* array, int currindex) {
+    int countstable = 0;
+    int countincr = 0;
+    int countdecr = 0;
+    for (int i = currindex % ARRAYSTATELENGTH; i < currindex - 1; i++ ) {
+        if (array[i % ARRAYSTATELENGTH] == array[(i+1) % ARRAYSTATELENGTH]) {
+            countstable ++;
+        } else if (array[i % ARRAYSTATELENGTH] < array[(i+1) % ARRAYSTATELENGTH]) {
+            countincr ++;
+        } else {
+            countdecr ++;
+        }
+    }
+    if (countstable >= ARRAYSTATELENGTH - 1) {
+        return 0;
+    } else if (countstable + countincr >= ARRAYSTATELENGTH - 1) {
+        return 1;
+    } else if (countstable + countdecr >= ARRAYSTATELENGTH - 1) {
+        return 2;
+    } else {
+        return 3;
+    }
 }

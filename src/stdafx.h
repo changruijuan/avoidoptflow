@@ -31,7 +31,7 @@
 #define EDGE_OBS 0.02 // 计算统一颜色巨型障碍物颜色时的边界0.33
 #define EDGE_CROSS 0.35 // 当free区域在此区域外面时，直接平移
 #define COLOR_SCALE 20  //认为是同一颜色的范围
-#define THRESHOLD_TIMER 0.75 //同色所占比例大于整幅图像的75%，则认为是墙，停止。
+#define THRESHOLD_TIMER 0.68 //0.75(tun),0.4(cross)同色所占比例大于整幅图像的75%，则认为是墙，停止。
 #define THRESHOLD_ZERO 0.80 //同一颜色中光流为0的所占比例，此处matlab中同一颜色处光流为0，而gazebo中同一颜色处光流非0
 #define FLOW_ZERO 0  //光流小于等于此值认为光流为0
 #define FB_SCALE 10e8  //fb计算出的光流比较大，缩小的倍数
@@ -94,13 +94,20 @@
 #define COUNTTIME 3
 #define COUNTSTOP 2
 #define COUNTLINER 1
+#define COUNTHOVER 1
+#define LEARNINGMOVECOL 15 //learning split to 15 cols
+#define ARRAYSTATELENGTH 5
+#define MAXSIMPLEFLOW 1000
+#define OBJECTPOSITIONX 30.7
+#define OBJECTPOSITIONY 6.5
 
 //need to false
-#define ISSKIP true
+#define ISSKIP false
 
-//   <<<<<<<<<<<<<<<<< heyu >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-#define ARDRONE_SPEED 0.5  // 0.1手动控制ARDrone的速度 **********************
-#define ROTATION_SPEED 0.5  // 0.2 手动控制ARDrone的旋转速度???????????????????/  *************************
+// heyu
+#define ARDRONE_SPEED 0.8 //0.3(cross)0.1手动控制ARDrone的速度 **********************
+#define ARDRONE_CROSS_SPEED 0.3 // 0.3(cross)
+#define ROTATION_SPEED 0.5 //0.3(cross) 0.2 手动控制ARDrone的旋转速度???????????????????/  *************************
 #define MAX_OPTFLOW  20 // 最大的光流值    20??????  *****************************
 #define MEAN_OPTFLOW_THRESHOLD  7 //  平均光流值的阕值(shangxian)   20  ***********************
 #define EDGE_CEILING 0.2 // 1/5,2/7???? ****************
@@ -127,5 +134,19 @@
 #define OPT_SUDDEN 100  // *************
 #define LOSTRATE 0.5 // 特征点缺失率 ******************
 
+
+//result 说明：
+//[-1,1]: 根据左右平衡策略得到结果
+//-2： 右侧为大型障碍物，so 向左运动；
+//2： 左侧为大型障碍物，so 向右运动；
+//-4: 左右两侧均为大型障碍物，但右侧光流大，向左运动；
+//4： 左右两侧均为大型障碍物，但是左侧光流大，向右运动；
+//5: 天空sky，但是在计算过程中过滤
+//-8： 根据ttc计算，最大free连通区域在图像的左三分之一区域，所以向左平动；
+//8：根据ttc计算，最大free连通区域在图像的右三分之一区域，所以向右平动；
+//-16：移动障碍物向右运动，暂定无人机停下来；
+//16：移动障碍物向左运动，暂定无人机停下来；
+//-32：移动障碍物靠近无人机运动，且右侧光流大。无人机向左运动（左侧平动）
+//32：移动障碍物靠近无人机运动，且左侧光流大。无人机向右侧运动（右侧平动）
 
 

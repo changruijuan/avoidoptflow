@@ -96,6 +96,7 @@ class my_ardrone_node{
     double ardronePosX;
     double ardronePosY;
     int theta;//ardrone 当前飞机方向
+    double ardrone_speed;
     int curDirection; //
     int oriDirection; //
     int rotationNum; //
@@ -136,7 +137,17 @@ class my_ardrone_node{
 
     void autoCrossCtrl(float result);
 
+    void autoMoveCtrl(float result);
+
+    void autoPosCtrl(float result);
+
+    void autoPosCrossCtrl(float result);
+
     void linerCtrl(bool isleft);
+
+    void hoverCtrl();
+
+    void objectCtrl();
 
     void bigObsCtrl_turn90();
 
@@ -145,6 +156,12 @@ class my_ardrone_node{
     void turnWaitTime(bool isLeft, int waittime);
 
     void linerWaitTime(bool isLeft, int waittime);
+
+    void hoverWaitTime(int waittime);
+
+    void objTurnWaitTime(bool isLeft,int waittime);
+
+    void forwardWaitTime(int waittime);
 
     void manualCtrl();
 

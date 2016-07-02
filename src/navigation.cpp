@@ -132,26 +132,27 @@ float imgStrategic(ImgFunType funtype, IplImage* imgprev_1, IplImage* imgcurr_1,
 	//¼ÆËã¹âÁ÷
 	float k = funtype(imgprev_1,imgcurr_1,velx,vely);
 	float result  = 0;
-    if ((strategic >> 0 & 1) == 1) //balance 1 for tun
-	{
-        result = balanceForDenseCvMat(velx, vely, imgprev, imgdst, k);
-	}    
-	if ((strategic >> 1 & 1) == 1) //draw optical flow with gap 2
+
+    if ((strategic >> 0 & 1) == 1) //draw optical flow with gap 1
 	{
 		drawFlowForDenseCvMat(velx, vely, imgdst);
 	}
-	if ((strategic >> 2 & 1) == 1) //motion to color 4
+    if ((strategic >> 1 & 1) == 1) //motion to color 2
 	{
         motionToColor(velx, vely, color);
-	}
-    if ((strategic>> 3 & 1) == 1) //ttc 8 for cross
+    }
+    if ((strategic >> 2 & 1) == 1) //balance 1 for tun  4
+    {
+        result = balanceForDenseCvMat(velx, vely, imgprev, imgdst, k);
+    }
+    if ((strategic>> 3 & 1) == 1) //ttc for cross 8
     {
         result = balanceWithTTCDenseCvMat(velx, vely, imgprev, imgdst, k);
     }
-	if ((strategic>> 4 & 1) == 1) //draw flow without zero 16
-	{ 
-		drawFlowWithoutZero(velx, vely, imgdst);
-	}
+    if ((strategic>> 4 & 1) == 1) //for move obstacle 16
+    {
+        result = balanceWithMoveDenseCvMat(imgprev, imgdst, velx, vely, k);
+    }
 	if ((strategic>> 5 & 1) == 1) //motion to gray 32
 	{
 		motionToGray(velx, vely, gray);
@@ -181,13 +182,17 @@ float imgStrategic(ImgFunType funtype, IplImage* imgprev_1, IplImage* imgcurr_1,
 		sprintf(buffer, "%lf \n", compareTTC);
 		writeFile(buffer);*/
 	}
-    if ((strategic>> 8 & 1) == 1) //learning result 256
+    if ((strategic>> 8 & 1) == 1) //draw flow without zero 16
     {
-        learningCvMat(imgprev, imgdst, velx, vely);
+        drawFlowWithoutZero(velx, vely, imgdst);
     }
     if ((strategic>> 9 & 1) == 1) //get speed 512
     {
         getSpeedFromFlow(velx, vely, imgdst);
+    }
+    if ((strategic>> 9 & 1) == 1) //learning result 1024
+    {
+        learningCvMat_move(imgprev, imgdst, velx, vely);
     }
 
 

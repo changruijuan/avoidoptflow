@@ -48,6 +48,8 @@ float flowTagForDenseCvMat(IplImage* imgprev, IplImage* imgdst, CvMat* velx, CvM
 */
 float balanceForDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage* imgdst, float k, int px = WIDTH/2, int py = HEIGHT/2);
 
+float balanceDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage* imgdst, float k, int px = WIDTH/2, int py = HEIGHT/2);
+
 float balanceWithTTCDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage* imgdst, float k, int px = WIDTH/2, int py = HEIGHT/2);
 
 bool isBigObstacleColor(IplImage* imgdst, CvMat* velx);
@@ -62,5 +64,9 @@ void getSpeedFromFlow(CvMat* velx, CvMat* vely, IplImage* imgdst);
 void filterFLowCvMat(CvMat* velx, CvMat* vely);
 
 float ttcCrossForDenseCvMat (float result, CvMat* velx, CvMat* vely, IplImage* imgdst);
+
+float balanceWithMoveDenseCvMat(IplImage* imgprev, IplImage* imgdst, CvMat* velx, CvMat* vely, float k, int px = WIDTH/2, int py = HEIGHT/2);
+
+float moveForDenseCvMat(float result, IplImage* imgdst, CvMat* velx);
 
 #endif

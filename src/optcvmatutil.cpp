@@ -310,12 +310,23 @@ float flowTagForDenseCvMat(IplImage* imgprev, IplImage* imgdst, CvMat* velx, CvM
 
 //利用左右光流平衡
 float balanceForDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage* imgdst, float k, int px, int py) {
+
+    float result  = balanceDenseCvMat(velx, vely, imgprev, imgdst, k, px, py);
+
+    result = (result == 5) ? 0 : result; //5-sky
+
+    drawOrientation(leftSumFlow, rightSumFlow, px, py, result, imgdst);
+
+    return result;
+}
+
+float balanceDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage* imgdst, float k, int px, int py) {
     int isBigLeft = isBigObstacleColor(imgdst, velx, true);
     int isBigRight = isBigObstacleColor(imgdst, velx, false);
 
     filterFLowCvMat(velx, vely);
 
-    Vec2i leftSumFlow = Vec2i(0, 0);
+    leftSumFlow = Vec2i(0, 0);
     float up = EDGE*HEIGHT;
     float down = (1-EDGE)*HEIGHT;
 	for (int i = 0; i < px; i++)
@@ -326,7 +337,7 @@ float balanceForDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage
 			leftSumFlow[1] += (int) cvGetReal2D(vely, j, i);
 		}
 	}
-	Vec2i rightSumFlow = Vec2i(0, 0);
+    rightSumFlow = Vec2i(0, 0);
 	for (int i = px; i < WIDTH; i++)
 	{
 		for(int j = up; j < down; j++){
@@ -348,50 +359,13 @@ float balanceForDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage
 
     float result  = balanceControlLR(isBigLeft, isBigRight, leftSumFlow[0], rightSumFlow[0], k);
 
-    drawOrientation(leftSumFlow, rightSumFlow, px, py, result, imgdst);
-
     return result;
 }
 
 //利用左右光流平衡+TTC
 float balanceWithTTCDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplImage* imgdst, float k, int px, int py) {
-    int isBigLeft = isBigObstacleColor(imgdst, velx, true);
-    int isBigRight = isBigObstacleColor(imgdst, velx, false);
 
-    filterFLowCvMat(velx, vely);
-
-    Vec2i leftSumFlow = Vec2i(0, 0);
-    float up = EDGE*HEIGHT;
-    float down = (1-EDGE)*HEIGHT;
-    for (int i = 0; i < px; i++)
-    {
-        for (int j = up; j < down; j++)
-        {
-            leftSumFlow[0] += (int) cvGetReal2D(velx, j, i);
-            leftSumFlow[1] += (int) cvGetReal2D(vely, j, i);
-        }
-    }
-    Vec2i rightSumFlow = Vec2i(0, 0);
-    for (int i = px; i < WIDTH; i++)
-    {
-        for(int j = up; j < down; j++){
-            rightSumFlow[0] += (int) cvGetReal2D(velx, j, i);
-            rightSumFlow[1] += (int) cvGetReal2D(vely, j, i);
-        }
-    }
-    //printf("pre left :%d,%d  right:%d,%d\n", leftSumFlow[0], leftSumFlow[1], rightSumFlow[0], rightSumFlow[1]);
-    leftSumFlow[0] = abs(leftSumFlow[0] / px);
-    leftSumFlow[1] = abs(leftSumFlow[1] / px);
-    rightSumFlow[0] = abs(rightSumFlow[0] / (WIDTH - px));
-    rightSumFlow[1] = abs(rightSumFlow[1] / (WIDTH - px));
-
-    if(IS_FLOW_WRITE_FILE){
-        char buffer[50];
-        sprintf(buffer, "leftSumFlow	%d	rightSumFlow	%d\n", leftSumFlow[0], rightSumFlow[0]);
-        writeFile(buffer);
-    }
-
-    float result  = balanceControlLR(isBigLeft, isBigRight, leftSumFlow[0], rightSumFlow[0], k);
+    float result  = balanceDenseCvMat(velx, vely, imgprev, imgdst, k, px, py);
 
     result = ttcCrossForDenseCvMat (result, velx, vely, imgdst);
 
@@ -400,9 +374,111 @@ float balanceWithTTCDenseCvMat(CvMat* velx, CvMat* vely, IplImage* imgprev, IplI
     return result;
 }
 
+float balanceWithMoveDenseCvMat(IplImage* imgprev, IplImage* imgdst, CvMat* velx, CvMat* vely, float k, int px, int py){
+    float result  = balanceDenseCvMat(velx, vely, imgprev, imgdst, k, px, py);
+
+    result = (result == 5) ? 0 : result;
+
+    result = moveForDenseCvMat(result, imgdst, velx);
+
+    drawOrientation(leftSumFlow, rightSumFlow, px, py, result, imgdst);
+
+    return result;
+}
+
+float moveForDenseCvMat(float result, IplImage* imgdst, CvMat* velx){
+    if (result >= -1 && result <= 1) { //if not big obstacle
+        int up = EDGE_OBS*HEIGHT, down = (1-EDGE_OBS)*HEIGHT;
+        int sumFlow[LEARNINGMOVECOL];
+        int split = WIDTH/LEARNINGMOVECOL;
+
+        for(int j = 0; j < LEARNINGMOVECOL; j++ ){
+            int start = j * split, end = ( j + 1 ) * split;
+            sumFlow[j] = 0;
+            for (int k = start; k < end; k++) {
+                for(int i = up; i < down; i++){
+                    sumFlow[j] += abs(((int) cvGetReal2D(velx, i, k)));
+                }
+            }
+//            CvPoint upp, downp;
+//            upp.x = start;
+//            upp.y = up;
+//            downp.x = start;
+//            downp.y = down;
+//            cvLine(imgdst, upp, downp, CV_RGB(0,255,0));
+        }
+
+        int grap = ARRAYSTATELENGTH;
+        int move_left = 0;
+        int move_right = grap;
+        int move_summax = 0;
+        int max_pos = 0;
+        int max_simple = sumFlow[0];
+
+        for (int i = 0; i < grap; i++) {
+            move_summax += sumFlow[i];
+            if (max_simple < sumFlow[i]) {
+                max_simple = sumFlow[i];
+                max_pos = i;
+            }
+        }
+        int lastmax = move_summax;
+        for (int i = grap; i < LEARNINGMOVECOL; i++) {
+            int tmpmax = lastmax - sumFlow[i - grap] + sumFlow[i];
+            if (tmpmax > move_summax) {
+                move_summax = tmpmax;
+                move_left = i - grap + 1;
+                move_right = i;
+            }
+            lastmax = tmpmax;
+            if (max_simple < sumFlow[i]) {
+                max_simple = sumFlow[i];
+                max_pos = i;
+            }
+        }
+        maxpos[currindex] = max_pos;
+        maxsimple[currindex] = max_simple;
+        midpos[currindex] = (move_left + move_right)/2;
+        maxsum[currindex] = move_summax;
+        currindex = (currindex + 1) % ARRAYSTATELENGTH;
+
+        if (img_curr_num >= ARRAYSTATELENGTH && max_simple > MAXSIMPLEFLOW) {
+            //0 - stable, 1 - increase, 2 - decrease, 3 - mess
+            int maxposstate = getArrayState (maxpos, currindex);
+            int midposstate = getArrayState (midpos, currindex);
+            // because maxsum will not strictly equal, so it only be 1, 2,3
+            int maxsumstate = getArrayState(maxsum, currindex);
+            if ((maxposstate == 1 || midposstate == 1) && maxsumstate == 3) { //pos move to right, so obstacle move to left
+                result = -16 * INT_FLOAT;
+            } else if ((maxposstate == 2 || midposstate == 2) && maxsumstate == 3) {
+                result = 16 * INT_FLOAT;
+            } else if (midposstate >= LEARNINGMOVECOL/3 && midposstate <= (LEARNINGMOVECOL*2)/3 && maxsumstate == 1) {
+                // mid in the mid and the flow is increase, so the obstacle is move in the direction of the ardrone
+                if ( result >= 0 ) {
+                    result = 32 * INT_FLOAT;
+                } else {
+                    result = -32 * INT_FLOAT;
+                }
+            }
+            if (IS_WRITE_LEANING)
+            {
+                char buffer[100];
+                sprintf(buffer, "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", img_curr_num, max_pos, max_simple, (move_left + move_right)/2, move_summax, maxsumstate, maxposstate, midposstate);
+                writeFile(buffer);
+            }
+
+        }
+    }
+
+    return result;
+}
+
 
 float ttcCrossForDenseCvMat (float result, CvMat* velx, CvMat* vely, IplImage* imgdst) {
 
+    if (result == 5) { //sky
+        return 0;
+    }
     float turn = 0;
     if (result >= -1 && result <= 1) {
         float colflow[COLS];
@@ -481,6 +557,9 @@ int isBigObstacleColor(IplImage* imgdst, CvMat* velx, bool isleft){
     int end = isleft ? WIDTH/2 : (1-EDGE_OBS)*WIDTH;
     for(int i = EDGE_OBS*HEIGHT; i < (1-EDGE_OBS)*HEIGHT; i++){
         for(int j = start; j < end; j++ ){
+            if ((int)data[i*step+j*channels+0] > 255- COLOR_SCALE && (int)data[i*step+j*channels+1] < COLOR_SCALE && (int)data[i*step+j*channels+2] < COLOR_SCALE) {
+                continue;
+            }
             sumB += (int)data[i*step+j*channels+0];
             sumG += (int)data[i*step+j*channels+1];
             sumR += (int)data[i*step+j*channels+2];
@@ -493,8 +572,12 @@ int isBigObstacleColor(IplImage* imgdst, CvMat* velx, bool isleft){
     int timers;
     int timerCount = 0;
     int flowZeroCount = 0;
+    int sumFlow = 0;
     for(int i = EDGE_OBS*HEIGHT; i < (1-EDGE_OBS)*HEIGHT; i++){
         for(int j = start; j < end; j++ ){
+            if ((int)data[i*step+j*channels+0] > 255- COLOR_SCALE && (int)data[i*step+j*channels+1] < COLOR_SCALE && (int)data[i*step+j*channels+2] < COLOR_SCALE) {
+                continue;
+            }
             timers = 0;
             if(abs((int)data[i*step+j*channels+0] - avgB) < COLOR_SCALE){
                 timers += 1;
@@ -513,19 +596,20 @@ int isBigObstacleColor(IplImage* imgdst, CvMat* velx, bool isleft){
                     flowZeroCount ++;
                 }
             }
+            sumFlow += abs(((int) cvGetReal2D(velx, i, j)));
         }
     }
     float timerPro = (timerCount*1.0)/count;
-    float flowZeroPro = (flowZeroCount*1.0)/timerCount;
+    float flowZeroPro = timerCount == 0 ? 0 : (flowZeroCount*1.0)/timerCount;
     if(IS_WRITE_BIG_OBS){
-        CvFont font;
-        cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX|CV_FONT_ITALIC, 1, 1, 0, 2);
-        char c[50];
-        sprintf(c, "%d ", img_num);
-        cvPutText(imgdst, c, cvPoint(10,40), &font, CV_RGB(255, 0, 0));
+//        CvFont font;
+//        cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX|CV_FONT_ITALIC, 1, 1, 0, 2);
+//        char c[50];
+//        sprintf(c, "%d ", img_curr_num);
+//        cvPutText(imgdst, c, cvPoint(10,40), &font, CV_RGB(255, 0, 0));
 
         char buffer[200];
-        sprintf(buffer, "%d\t%d\t%.2f\t%.2f\t%d\n", img_num, isleft, timerPro, flowZeroPro, filtercount);
+        sprintf(buffer, "%d\t%d\t%.2f\t%.2f\t%d\t%d\n", img_curr_num, isleft, timerPro, flowZeroPro, filtercount, sumFlow);
         writeFile(buffer);
     }
 //    if ((!IS_ROS && timerPro > THRESHOLD_TIMER && flowZeroPro > THRESHOLD_ZERO)||(IS_ROS && timerPro > THRESHOLD_TIMER && flowZeroPro <= THRESHOLD_ZERO))//matlab

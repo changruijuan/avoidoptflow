@@ -14,6 +14,14 @@ static int tag = 1;
 static const int T = 50;
 static int i = 0;
 int img_num = 0; //picture num
+int img_curr_num = 0; // picture current number
+int maxpos[ARRAYSTATELENGTH];
+int maxsimple[ARRAYSTATELENGTH];
+int midpos[ARRAYSTATELENGTH];
+int maxsum[ARRAYSTATELENGTH];
+int currindex = 0;
+Vec2i leftSumFlow = Vec2i(0, 0);
+Vec2i rightSumFlow = Vec2i(0, 0);
 
 bool  video_record = false;
 double result1 = 0; //
@@ -46,9 +54,13 @@ int countright = 0;
 int countstop = 0;
 int countlinerleft = 0;
 int countlinerright = 0;
+int counthover = 0;
 int countturn = 0;
 bool isBigCtrl = false;
 bool isLinerCtrl = false;
+bool isHoverCtrl = false;
+bool isObjCtrl = false;
+bool isForwardCtrl = false;
 
 void my_ardrone_node::takeoff(){
     takeoff_pub.publish(emptymsg);
@@ -134,6 +146,8 @@ void my_ardrone_node::process(const sensor_msgs::ImageConstPtr& cam_image){
 
     current_image = cv_ptr->image;
     img_num ++;
+    img_curr_num ++;
+    img_curr_num %= 100000;
 
     if(IS_FLOW_WRITE_FILE){
         char buffer[BUFFER];
@@ -206,14 +220,33 @@ void my_ardrone_node::process(const sensor_msgs::ImageConstPtr& cam_image){
                 waitKey(1);
             }
         }
+//        cvNamedWindow ("flow", 1);
+//        cvShowImage ("flow", img_dst);
+//        cvNamedWindow("prev", 1);
+//        cvShowImage("prev", img_prev);
+//        cvWriteFrame(writer, img_dst);
+//        cvWriteFrame(writerprev, img_prev);
+//        waitKey(1);
+
 
         if(optCtrl){
             // 左右光流平衡策略避撞：
-            if (scene == 1) {
+            switch (scene) {
+            case 1:
                 autoTunCtrl(result);
-            }
-            else if (scene == 2) {
+                break;
+            case 2:
                 autoCrossCtrl(result);
+                break;
+            case 3:
+                autoMoveCtrl(result);
+                break;
+            case 4:
+                autoPosCrossCtrl(result);
+                break;
+            default:
+                manualCtrl();
+                break;
             }
 
             int k = waitKey(1);
@@ -256,22 +289,22 @@ void my_ardrone_node::manualCtrl(){
         land();
     }
     if(k == UP){//up for forward
-        forward(ARDRONE_SPEED);
+        forward(ardrone_speed);
     }
     if(k == DOWN){//down for back
-        back(ARDRONE_SPEED);
+        back(ardrone_speed);
     }
     if(k == LEFT){//left for left
-        left(ARDRONE_SPEED);
+        left(ardrone_speed);
     }
     if(k == RIGHT){//right for right
-        right(ARDRONE_SPEED);
+        right(ardrone_speed);
     }
     if(k == W){//W for lift
-        up(ARDRONE_SPEED);
+        up(ardrone_speed);
     }
     if(k == S){//S for down
-        down(ARDRONE_SPEED);
+        down(ardrone_speed);
     }
     if(k == A){//A for turn left
         dirIsChange = true;
@@ -347,7 +380,7 @@ void my_ardrone_node::autoTunCtrl(float result){
             countturn += TIMEWINDOW;
 
         }else {
-            forward(ARDRONE_SPEED);            
+            forward(ardrone_speed);
         }
         allToZero();
     }
@@ -356,7 +389,11 @@ void my_ardrone_node::autoTunCtrl(float result){
 }
 
 void my_ardrone_node::autoCrossCtrl(float result){
-    //count each condition
+    if (abs(ardronePosX - OBJECTPOSITIONX) < 1 && abs(ardronePosY - OBJECTPOSITIONY) < 1) {
+        hover();
+        land();
+    }
+    //count each condition\
 
     if(result == -2 || result == 2 || result == -4 || result == 4) {
         countstop++;
@@ -424,13 +461,308 @@ void my_ardrone_node::autoCrossCtrl(float result){
             countturn += TIMEWINDOW;
         }
         else {
-            forward(ARDRONE_SPEED);
+            forward(ardrone_speed);
         }
         allToZero();
     }
     countturn = countturn % (TURNTIME*4);
 }
 
+void my_ardrone_node::autoPosCrossCtrl(float result) {
+
+    if (abs(ardronePosX - OBJECTPOSITIONX) < 1 && abs(ardronePosY - OBJECTPOSITIONY) < 1) {
+        hover();
+        land();
+    }
+
+    if(result == -2 || result == 2 || result == -4 || result == 4) {
+        countstop++;
+    }
+    else if (result == -8) {
+        countlinerleft++;
+    }
+    else if (result == 8) {
+        countlinerright++;
+    }
+    else if (result > 0) {
+        countright++;
+    }
+    else if (result < 0) {
+        countleft++;
+    }
+
+    cout << img_num << "result " << result << " countstop " << countstop << \
+            " countleft " << countleft << " countright " << countright << \
+            " countlinerleft " << countlinerleft << " countlinerright " << countlinerright << \
+            " islastleft " << isLastLeft << " isleft " << isleft << \
+            " islastlinerleft " << isLastLinerLeft << " islinerleft " << isLinerLeft << \
+            " times " << times << endl;
+
+    if(isBigCtrl){
+        turnWaitTime(isleft, times);
+    }
+
+    if (isLinerCtrl) {
+        linerWaitTime(isleft, times);
+    }
+
+    if (isObjCtrl) {
+        if (isForwardCtrl) {
+            cout << "objctrl forwardctrl " << times << endl;
+            forwardWaitTime(times);
+        } else {
+            cout << "objctrl objturnctrl " << times << endl;
+            objTurnWaitTime(isleft, times);
+        }
+    }
+
+
+    if(!isBigCtrl && !isLinerCtrl && !isObjCtrl && countstop >= COUNTSTOP){
+        bigObsCtrl(result);
+        isBigCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isObjCtrl && countlinerleft >= COUNTLINER){
+        linerCtrl(true);
+        isLinerCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isObjCtrl && countlinerright >= COUNTLINER){
+        linerCtrl(false);
+        isLinerCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isObjCtrl && (img_num % TIMEWINDOW == 0)){ // if  equal to timewindow, turn each
+        //if not big obstacle, "isLastLeft = isleft" in order to first time to big ctrl binary = 1;
+        isLastLeft = isleft;
+        isLastLinerLeft = isLinerLeft;
+        bigturn = 0;
+        binary = 1;
+        if(countright >= COUNTTIME){
+            dirIsChange = true;
+            rotation_inclock(ROTATION_SPEED);
+            countturn -= TIMEWINDOW;
+        }
+        else if(countleft >= COUNTTIME){
+            dirIsChange = true;
+            rotation_clock(ROTATION_SPEED);
+            countturn += TIMEWINDOW;
+        }
+        else {
+            objectCtrl();
+            isObjCtrl = true;
+            return;
+        }
+        allToZero();
+    }
+    countturn = countturn % (TURNTIME*4);
+}
+
+void my_ardrone_node::autoPosCtrl(float result){
+
+    if (abs(ardronePosX - OBJECTPOSITIONX) < 1 && abs(ardronePosY - OBJECTPOSITIONY) < 1) {
+        hover();
+        land();
+    }
+
+    //count each condition
+    if(result == -2 || result == 2 || result == -4 || result == 4) {
+        countstop++;
+    }
+    else if (result == -32) {
+        countlinerleft++;
+    }
+    else if (result == 32) {
+        countlinerright++;
+    }
+    else if (result == -16 || result == 16) {
+        counthover++;
+    }
+    else if (result > 0) {
+        countright++;
+    }
+    else if (result < 0) {
+        countleft++;
+    }
+
+    cout << img_num << "result " << result << " countstop " << countstop << \
+            " countleft " << countleft << " countright " << countright << \
+            " countlinerleft " << countlinerleft << " countlinerright " << countlinerright << \
+            " counthover " << counthover << " islastleft " << isLastLeft << " isleft " << isleft << \
+            " islastlinerleft " << isLastLinerLeft << " islinerleft " << isLinerLeft << \
+            " times " << times << endl;
+
+    if(isBigCtrl){
+        cout << "bigctrl " << times << endl;
+        turnWaitTime(isleft, times);
+    }
+
+    if (isLinerCtrl) {
+        cout << "linerctrl " << times << endl;
+        linerWaitTime(isleft, times);
+    }
+
+    if (isHoverCtrl) {
+        cout << "hoverctrl " << times << endl;
+        hoverWaitTime(times);
+    }
+
+    if (isObjCtrl) {
+        if (isForwardCtrl) {
+            cout << "objctrl forwardctrl " << times << endl;
+            forwardWaitTime(times);
+        } else {
+            cout << "objctrl objturnctrl " << times << endl;
+            objTurnWaitTime(isleft, times);
+        }
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && !isObjCtrl && countstop >= COUNTSTOP){
+        bigObsCtrl(result);
+        isBigCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && !isObjCtrl && countlinerleft >= COUNTLINER){
+        linerCtrl(true);
+        isLinerCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && !isObjCtrl && countlinerright >= COUNTLINER){
+        linerCtrl(false);
+        isLinerCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && !isObjCtrl && counthover >= COUNTHOVER){
+        hoverCtrl();
+        isHoverCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && !isObjCtrl && (img_num % TIMEWINDOW == 0)){ // if  equal to timewindow, turn each
+        //if not big obstacle, "isLastLeft = isleft" in order to first time to big ctrl binary = 1;
+        isLastLeft = isleft;
+        isLastLinerLeft = isLinerLeft;
+        bigturn = 0;
+        binary = 1;
+        if(countright >= COUNTTIME){
+            dirIsChange = true;
+            rotation_inclock(ROTATION_SPEED);
+            countturn -= TIMEWINDOW;
+        }
+        else if(countleft >= COUNTTIME){
+            dirIsChange = true;
+            rotation_clock(ROTATION_SPEED);
+            countturn += TIMEWINDOW;
+        }
+        else {
+            objectCtrl();
+            isObjCtrl = true;
+            return;
+        }
+        allToZero();
+    }
+    countturn = countturn % (TURNTIME*4);
+}
+
+
+void my_ardrone_node::autoMoveCtrl(float result){
+    if (abs(ardronePosX - OBJECTPOSITIONX) < 1 && abs(ardronePosY - OBJECTPOSITIONY) < 1) {
+        hover();
+        land();
+    }
+    //count each condition
+
+    if(result == -2 || result == 2 || result == -4 || result == 4) {
+        countstop++;
+    }
+    else if (result == -32) {
+        countlinerleft++;
+    }
+    else if (result == 32) {
+        countlinerright++;
+    }
+    else if (result == -16 || result == 16) {
+        counthover++;
+    }
+    else if (result > 0) {
+        countright++;
+    }
+    else if (result < 0) {
+        countleft++;
+    }
+
+    cout << img_num << "result " << result << " countstop " << countstop << \
+            " countleft " << countleft << " countright " << countright << \
+            " countlinerleft " << countlinerleft << " countlinerright " << countlinerright << \
+            " counthover " << counthover << " islastleft " << isLastLeft << " isleft " << isleft << \
+            " islastlinerleft " << isLastLinerLeft << " islinerleft " << isLinerLeft << \
+            " times " << times << endl;
+
+    if(isBigCtrl){
+        turnWaitTime(isleft, times);
+    }
+
+    if (isLinerCtrl) {
+        linerWaitTime(isleft, times);
+    }
+
+    if (isHoverCtrl) {
+        hoverWaitTime(times);
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && countstop >= COUNTSTOP){
+        bigObsCtrl(result);
+        isBigCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && countlinerleft >= COUNTLINER){
+        linerCtrl(true);
+        isLinerCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && countlinerright >= COUNTLINER){
+        linerCtrl(false);
+        isLinerCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && counthover >= COUNTHOVER){
+        hoverCtrl();
+        isHoverCtrl = true;
+        return;
+    }
+
+    if(!isBigCtrl && !isLinerCtrl && !isHoverCtrl && (img_num % TIMEWINDOW == 0)){ // if  equal to timewindow, turn each
+        //if not big obstacle, "isLastLeft = isleft" in order to first time to big ctrl binary = 1;
+        isLastLeft = isleft;
+        isLastLinerLeft = isLinerLeft;
+        bigturn = 0;
+        binary = 1;
+        if(countright >= COUNTTIME){
+            dirIsChange = true;
+            rotation_inclock(ROTATION_SPEED);
+            countturn -= TIMEWINDOW;
+        }
+        else if(countleft >= COUNTTIME){
+            dirIsChange = true;
+            rotation_clock(ROTATION_SPEED);
+            countturn += TIMEWINDOW;
+        }
+        else {
+            forward(ardrone_speed);
+        }
+        allToZero();
+    }
+    countturn = countturn % (TURNTIME*4);
+}
 
 void my_ardrone_node::bigObsCtrl_turn90(){
 
@@ -463,7 +795,7 @@ void my_ardrone_node::bigObsCtrl_turn90(){
         }else{  // not obstacle
             times = 0;
             img_num = 0;
-            forward(ARDRONE_SPEED);
+            forward(ardrone_speed);
             return;
         }
     }
@@ -488,7 +820,7 @@ void my_ardrone_node::bigObsCtrl_turn90(){
                 return;
             }
         }else{
-            forward(ARDRONE_SPEED);
+            forward(ardrone_speed);
             return;
         }
     }
@@ -509,7 +841,7 @@ void my_ardrone_node::bigObsCtrl_turn90(){
        }else{ //not big obstcle
            times = 0;
            isleft = 1;
-           forward(ARDRONE_SPEED);
+           forward(ardrone_speed);
            return;
        }
     }
@@ -524,7 +856,7 @@ void my_ardrone_node::bigObsCtrl_turn90(){
         times = 0;
         img_num = 0;
         isleft = 1;
-        forward(ARDRONE_SPEED);
+        forward(ardrone_speed);
         return;
     }
 }
@@ -535,6 +867,7 @@ void my_ardrone_node::allToZero(){
     countleft = 0;
     countlinerleft = 0;
     countlinerright = 0;
+    counthover = 0;
     img_num = 0;
 }
 
@@ -542,7 +875,11 @@ void my_ardrone_node::linerCtrl (bool isleft) {
     allToZero();
     isLastLinerLeft = isLinerLeft;
     isLinerLeft = isleft ? 1 : 0;
-    times = 3;
+    if (scene == 4) {
+        times = 15;
+    } else {
+        times = 3;
+    }
     if(isLastLinerLeft == isLinerLeft){
         binary = 1;
     }else{
@@ -555,8 +892,39 @@ void my_ardrone_node::linerCtrl (bool isleft) {
     linerWaitTime(isleft, times);
 }
 
+void my_ardrone_node::hoverCtrl () {
+    allToZero();
+    times = 5;
+    hoverWaitTime(times);
+}
 
-void my_ardrone_node::bigObsCtrl(float result) {
+void my_ardrone_node::objectCtrl(){
+    allToZero();
+    // 换算为需要旋转的次数
+    double needy = OBJECTPOSITIONY - ardronePosY;
+    double needx = OBJECTPOSITIONX - ardronePosX;
+    double angle = atan(needy/needx) * 57.3; // (180/3.14)
+    int turn = (angle - theta) * 0.83; // (TURNTIME/90)
+    cout << "objectCtrl turn " << turn << " angle " << angle  << " theta " << theta << " ardroneX " << ardronePosX << " ardronePosY " << ardronePosY << endl;
+    times = turn % (TURNTIME*4);
+    if (abs(times) < 5) {
+        isForwardCtrl = true;
+        times = 5;
+        forwardWaitTime(times);
+    } else {
+        if (times > 0) {
+            times = abs(times);
+            isleft = true;
+            objTurnWaitTime(isleft, times);
+        } else if(times < 0) {
+            times = abs(times);
+            isleft = false;
+            objTurnWaitTime(isleft, times);
+        }
+    }
+}
+
+void my_ardrone_node::bigObsCtrl (float result) {
     allToZero();
     isLastLeft = isleft;
     if(result == -4) {
@@ -583,7 +951,6 @@ void my_ardrone_node::bigObsCtrl(float result) {
     times *= binary;
     turnWaitTime(isleft, times);
 }
-
 
 void my_ardrone_node::turnWaitTime(bool isLeft, int waittime) {
     // turn 180 degree, means that return back origin road, so should continue turn.
@@ -633,6 +1000,60 @@ void my_ardrone_node::linerWaitTime(bool isLeft, int waittime) {
     times--;
 }
 
+void my_ardrone_node::hoverWaitTime(int waittime) {
+    if(waittime == 0){
+        isHoverCtrl = false;
+        return;
+    }
+    hover();
+
+    if(img_num % TIMEWINDOW == 0){
+        allToZero();
+    }
+    times--;
+}
+
+void my_ardrone_node::objTurnWaitTime(bool isLeft, int waittime) {
+    if(waittime == 0){
+        times = 5;
+        isForwardCtrl = true;
+        forwardWaitTime(times);
+        return;
+    }
+
+    if(isLeft){
+         dirIsChange = true;
+         rotation_clock(ROTATION_SPEED);
+         countturn ++;
+     }else {
+        dirIsChange = true;
+        rotation_inclock(ROTATION_SPEED);
+        countturn --;
+    }
+
+    if(img_num % TIMEWINDOW == 0){
+        allToZero();
+    }
+
+    countturn = countturn % (TURNTIME*4);
+    times--;
+}
+
+void my_ardrone_node::forwardWaitTime(int waittime){
+    if (waittime == 0) {
+        isObjCtrl = false;
+        isForwardCtrl = false;
+        return;
+    }
+
+    forward(ardrone_speed);
+
+    if(img_num % TIMEWINDOW == 0){
+        allToZero();
+    }
+
+    times--;
+}
 
 float my_ardrone_node::getNextRotation(){
     if(result1 <= -BALANCE_LEVEL || result1 >= BALANCE_LEVEL){
@@ -697,7 +1118,6 @@ void my_ardrone_node::odom_callback(nav_msgs::Odometry msg) {
 
 void my_ardrone_node::modelstate_callback (const gazebo_msgs::ModelStatesConstPtr &msg) {
     size_t modelCount = msg->name.size(); 
-    int modelcount = 0;
     double brickPosX = 0;
     double brickPosY = 0;
     for(size_t modelInd = 0; modelInd < modelCount; ++modelInd)
@@ -706,25 +1126,61 @@ void my_ardrone_node::modelstate_callback (const gazebo_msgs::ModelStatesConstPt
         {
             ardronePosX = msg->pose[modelInd].position.x;
             ardronePosY = msg->pose[modelInd].position.y;
-            cout << "ardrone x: " << ardronePosX << "  y: " << ardronePosY << endl;
-            modelcount ++;
+            //cout << "ardrone x: " << ardronePosX << "  y: " << ardronePosY << endl;
         }
-        if(msg->name[modelInd] == "brick_box_3x1x3")
+        if(scene == 3 && msg->name[modelInd] == "brick_box_3x1x3") // move right
         {
             brickPosX = msg->pose[modelInd].position.x;
             brickPosY = msg->pose[modelInd].position.y;
-            cout << "brick x: " << brickPosX << "  y: " << brickPosY << endl;
-            modelcount ++;
+            //cout << "brick x: " << brickPosX << "  y: " << brickPosY << endl;
+            gazebo_msgs::ModelState state;
+            state.model_name = "brick_box_3x1x3";
+            state.pose.position.y = brickPosY + 0.1;
+            state.pose.position.x = brickPosX;
+            if (state.pose.position.y > -16 && state.pose.position.y < 11 && state.pose.position.x > -10.5 && state.pose.position.x < 27.5) {
+                model_state_pub.publish(state);
+            }
         }
-        if (modelcount == 2) {
-            break;
+        if(scene == 3 && msg->name[modelInd] == "brick_box_3x1x3_0") // move left
+        {
+            brickPosX = msg->pose[modelInd].position.x;
+            brickPosY = msg->pose[modelInd].position.y;
+            //cout << "brick x: " << brickPosX << "  y: " << brickPosY << endl;
+            gazebo_msgs::ModelState state;
+            state.model_name = "brick_box_3x1x3_0";
+            state.pose.position.y = brickPosY - 0.1;
+            state.pose.position.x = brickPosX;
+            if (state.pose.position.y > -16 && state.pose.position.y < 11 && state.pose.position.x > -10.5 && state.pose.position.x < 27.5) {
+                model_state_pub.publish(state);
+            }
+        }
+        if(scene == 3 && msg->name[modelInd] == "brick_box_3x1x3_1") //move down
+        {
+            brickPosX = msg->pose[modelInd].position.x;
+            brickPosY = msg->pose[modelInd].position.y;
+            //cout << "brick x: " << brickPosX << "  y: " << brickPosY << endl;
+            gazebo_msgs::ModelState state;
+            state.model_name = "brick_box_3x1x3_1";
+            state.pose.position.y = brickPosY;
+            state.pose.position.x = brickPosX + 0.1;
+            if (state.pose.position.y > -16 && state.pose.position.y < 11 && state.pose.position.x > -10.5 && state.pose.position.x < 27.5) {
+                model_state_pub.publish(state);
+            }
+        }
+        if(scene == 3 && msg->name[modelInd] == "brick_box_3x1x3_2") //move up
+        {
+            brickPosX = msg->pose[modelInd].position.x;
+            brickPosY = msg->pose[modelInd].position.y;
+            //cout << "brick x: " << brickPosX << "  y: " << brickPosY << endl;
+            gazebo_msgs::ModelState state;
+            state.model_name = "brick_box_3x1x3_2";
+            state.pose.position.y = brickPosY;
+            state.pose.position.x = brickPosX - 0.1;
+            if (state.pose.position.y > -16 && state.pose.position.y < 11 && state.pose.position.x > -10.5 && state.pose.position.x < 27.5) {
+                model_state_pub.publish(state);
+            }
         }
     }
-    gazebo_msgs::ModelState state;
-    state.model_name = "brick_box_3x1x3";
-    state.pose.position.y = brickPosY + 0.01;
-    state.pose.position.x = brickPosX;
-    model_state_pub.publish(state);
 }
 
 my_ardrone_node::my_ardrone_node(int function, int scene) {
@@ -747,11 +1203,19 @@ my_ardrone_node::my_ardrone_node(int function, int scene) {
     dirIsChange = false;
     ardronePosX = 0;
     ardronePosY = 0;
+    ardrone_speed = ARDRONE_CROSS_SPEED;
     if (scene == 1) {
         strategic = 7;
+        ardrone_speed = ARDRONE_SPEED;
     }
     else if (scene == 2) {
-        strategic = 14;
+        strategic = 11;
+    }
+    else if (scene == 3) {
+        strategic = 19;
+    }
+    else if (scene == 4) {
+        strategic = 11;
     }
     this->scene = scene;
     this->function = function;
@@ -768,12 +1232,11 @@ my_ardrone_node::~my_ardrone_node(){
     cvReleaseVideoWriter(&writergray);
 }
 
-
 int main(int argc, char **argv){
     ros::init(argc,argv,"avoid_optflow");
     my_ardrone_node man = my_ardrone_node(1, 2);
-    cout << "Press Up Down Left Right to control the quadrotor in the direction of forward,backward,turn left and turn right \
-            . Press A and D to control the quadrotor flying left and right. Presss W and S to control the quadrotor lift and down.\
+    cout << "Press Up Down Left Right to control the quadrotor in the direction of forward,backward,turn left and turn right.\n  \
+            Press A and D to control the quadrotor flying left and right. Presss W and S to control the quadrotor lift and down.\n \
             Press P to start/stop the record. Press esc to exit."<< endl;
             ros::spin();
 
