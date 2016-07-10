@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(avoid_optflow C CXX)
+project(avoidoptflow C CXX)
 #定义当然路径的src路径下为根路径
 aux_source_directory(./src SRC_LIST)
 
